@@ -43,4 +43,5 @@ jobs:
           exit 1
 
       - name: Run Spoke Hooks regression test
-        run: node packages/cli/dist/index.js test
+        working-directory: examples/express-stripe
+        run: node ../../packages/cli/dist/index.js test
