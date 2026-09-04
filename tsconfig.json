@@ -2,8 +2,8 @@
   "files": [],
   "references": [
     { "path": "./packages/core" },
-    { "path": "./packages/stripe" }
-    // { "path": "./packages/cli" },
-    // { "path": "./examples/express-stripe" }
+    { "path": "./packages/stripe" },
+    { "path": "./packages/cli" },
+    { "path": "./examples/express-stripe" }
   ]
 }

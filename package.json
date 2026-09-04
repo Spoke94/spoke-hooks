@@ -2,7 +2,7 @@
     "name": "spoke-hooks",
     "version": "0.0.1",
     "private": true,
-    "workspaces" : [
+    "workspaces": [
         "packages/*",
         "examples/*"
     ],
@@ -11,6 +11,7 @@
         "typecheck": "tsc -b --pretty"
     },
     "devDependencies": {
+        "@types/node": "^26.4.1",
         "typescript": "^5.9.2"
     }
 }

@@ -1,0 +1,23 @@
+{
+  "event": {
+    "id": "evt_invoice_paid_001",
+    "provider": "stripe",
+    "type": "invoice.paid",
+    "payload": {
+      "id": "evt_invoice_paid_001",
+      "type": "invoice.paid",
+      "data": {
+        "object": {
+          "id": "in_001",
+          "status": "paid"
+        }
+      }
+    }
+  },
+  "baseline": {
+    "status": 200,
+    "body": {
+      "received": true
+    }
+  }
+}
