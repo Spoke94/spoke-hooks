@@ -1,31 +1,59 @@
+import { join } from "node:path";
+
 import {
   compareReplayResult,
+  listFixturePaths,
+  loadConfig,
   loadFixture,
   replayFixture
 } from "@spokelabs/core";
 
 export async function runTest(): Promise<void> {
-  const fixture = await loadFixture(
-    "./examples/express-stripe/.spoke/events/invoice-paid.json"
+  const projectRoot = process.cwd();
+
+  const config = await loadConfig(projectRoot);
+
+  const eventsDir = join(
+    projectRoot,
+    config.eventsDir
   );
 
-  const actual = await replayFixture(
-    fixture,
-    "http://localhost:3000/webhook"
+  const fixturePaths = await listFixturePaths(
+    eventsDir
   );
 
-  const comparison = compareReplayResult(
-    fixture.baseline,
-    actual
-  );
+  let hasFailure = false;
 
-  console.log("Expected:", fixture.baseline);
-  console.log("Actual:", actual);
+  for (const fixturePath of fixturePaths) {
+    const fixture = await loadFixture(
+      fixturePath
+    );
 
-  if (comparison.passed) {
-    console.log("PASS");
-  } else {
-    console.error("FAIL");
+    const actual = await replayFixture(
+      fixture,
+      config.endpoint,
+      config.timeoutMs
+    );
+
+    const comparison = compareReplayResult(
+      fixture.baseline,
+      actual
+    );
+
+    console.log("");
+    console.log(`Event: ${fixture.event.type}`);
+    console.log("Expected:", fixture.baseline);
+    console.log("Actual:", actual);
+
+    if (comparison.passed) {
+      console.log("PASS");
+    } else {
+      console.error("FAIL");
+      hasFailure = true;
+    }
+  }
+
+  if (hasFailure) {
     process.exitCode = 1;
   }
 }
