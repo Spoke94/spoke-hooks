@@ -7,6 +7,12 @@ export interface SpokeConfig {
   timeoutMs: number;
 }
 
+export const DEFAULT_SPOKE_CONFIG: SpokeConfig = {
+    endpoint: "http://localhost:3000/webhook",
+    eventsDir: ".spoke/events",
+    timeoutMs: 5000
+};
+
 export async function loadConfig(
     projectRoot: string
 ): Promise<SpokeConfig> {
