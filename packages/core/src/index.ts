@@ -27,3 +27,15 @@ export {
 export type {
   ComparisonResult
 } from "./compare.js";
+
+export {
+  loadConfig
+} from "./config.js";
+
+export type {
+  SpokeConfig
+} from "./config.js";
+
+export {
+  listFixturePaths
+} from "./discovery.js";

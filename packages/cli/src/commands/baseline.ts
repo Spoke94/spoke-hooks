@@ -1,27 +1,48 @@
+import { join } from "node:path";
+
 import {
+  listFixturePaths,
+  loadConfig,
   loadFixture,
   replayFixture,
   saveFixture
 } from "@spokelabs/core";
 
 export async function runBaseline(): Promise<void> {
-  const fixturePath =
-    "./examples/express-stripe/.spoke/events/invoice-paid.json";
+  const projectRoot = process.cwd();
 
-  const fixture = await loadFixture(fixturePath);
+  const config = await loadConfig(projectRoot);
 
-  const actual = await replayFixture(
-    fixture,
-    "http://localhost:3000/webhook"
+  const eventsDir = join(
+    projectRoot,
+    config.eventsDir
   );
 
-  fixture.baseline = actual;
-
-  await saveFixture(
-    fixturePath,
-    fixture
+  const fixturePaths = await listFixturePaths(
+    eventsDir
   );
 
-  console.log("Baseline updated:");
-  console.log(actual);
+  for (const fixturePath of fixturePaths) {
+    const fixture = await loadFixture(
+      fixturePath
+    );
+
+    const actual = await replayFixture(
+      fixture,
+      config.endpoint,
+      config.timeoutMs
+    );
+
+    fixture.baseline = actual;
+
+    await saveFixture(
+      fixturePath,
+      fixture
+    );
+
+    console.log("");
+    console.log(`Event: ${fixture.event.type}`);
+    console.log("Baseline updated:");
+    console.log(actual);
+  }
 }
