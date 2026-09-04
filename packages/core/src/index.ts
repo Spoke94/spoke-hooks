@@ -12,7 +12,8 @@ export {
 } from "./fixture.js";
 
 export {
-  replayFixture
+  replayFixture,
+  ReplayRequestError
 } from "./replay.js";
 
 export type {
