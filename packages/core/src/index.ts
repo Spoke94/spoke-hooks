@@ -29,6 +29,7 @@ export type {
 } from "./compare.js";
 
 export {
+  DEFAULT_SPOKE_CONFIG,
   loadConfig
 } from "./config.js";
 
