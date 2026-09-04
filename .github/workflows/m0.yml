@@ -1,0 +1,46 @@
+name: Spoke Hooks M0
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  regression-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Start example webhook server
+        run: |
+          node examples/express-stripe/dist/index.js > /tmp/spoke-server.log 2>&1 &
+          echo $! > /tmp/spoke-server.pid
+
+      - name: Wait for webhook server
+        run: |
+          for i in {1..20}; do
+            if curl -s http://localhost:3000/ > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "Webhook server did not start."
+          cat /tmp/spoke-server.log
+          exit 1
+
+      - name: Run Spoke Hooks regression test
+        run: node packages/cli/dist/index.js test
