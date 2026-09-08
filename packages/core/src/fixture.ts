@@ -53,16 +53,18 @@ function isWebhookFixture(value: unknown): value is WebhookFixture {
     return false;
   }
 
-  if (!isRecord(baseline)) {
-    return false;
-  }
+  if (baseline !== null) {
+    if (!isRecord(baseline)) {
+      return false;
+    }
 
-  if (typeof baseline.status !== "number") {
-    return false;
-  }
+    if (typeof baseline.status !== "number") {
+      return false;
+    }
 
-  if (!("body" in baseline)) {
-    return false;
+    if (!("body" in baseline)) {
+      return false;
+    }
   }
 
   return true;

@@ -12,5 +12,5 @@ export interface WebhookBaseline {
 
 export interface WebhookFixture {
   event: WebhookEvent;
-  baseline: WebhookBaseline;
+  baseline: WebhookBaseline | null;
 }
