@@ -29,6 +29,17 @@ export async function runTest(): Promise<void> {
       fixturePath
     );
 
+    if (fixture.baseline === null) {
+      console.error("");
+      console.error(`Event: ${fixture.event.type}`);
+      console.error(
+        "FAIL: No baseline recorded. Run `spoke-hooks baseline` first."
+      );
+
+      hasFailure = true;
+      continue;
+    }
+
     const actual = await replayFixture(
       fixture,
       config.endpoint,
