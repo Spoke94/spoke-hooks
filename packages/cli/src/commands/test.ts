@@ -6,7 +6,7 @@ import {
   loadConfig,
   loadFixture,
   replayFixture
-} from "@spokelabs/core";
+} from "@spoke-labs/core";
 
 export async function runTest(): Promise<void> {
   const projectRoot = process.cwd();

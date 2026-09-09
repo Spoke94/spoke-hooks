@@ -1,15 +1,20 @@
 {
-  "name": "@spokelabs/hooks",
+  "name": "@spoke-labs/hooks",
   "version": "0.0.1",
-  "private": true,
   "type": "module",
   "bin": {
     "spoke-hooks": "./dist/index.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
-    "@spokelabs/core": "0.0.1",
-    "@spokelabs/stripe": "0.0.1"
+    "@spoke-labs/core": "0.0.1",
+    "@spoke-labs/stripe": "0.0.1"
   }
 }

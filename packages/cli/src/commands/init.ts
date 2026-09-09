@@ -7,7 +7,7 @@ import { join } from "node:path";
 
 import {
   DEFAULT_SPOKE_CONFIG
-} from "@spokelabs/core";
+} from "@spoke-labs/core";
 
 export async function runInit(): Promise<void> {
   const projectRoot = process.cwd();

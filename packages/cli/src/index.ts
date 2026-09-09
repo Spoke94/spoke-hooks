@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { ReplayRequestError } from "@spokelabs/core";
+import { ReplayRequestError } from "@spoke-labs/core";
 
 import { runAdd } from "./commands/add.js";
 import { runBaseline } from "./commands/baseline.js";
