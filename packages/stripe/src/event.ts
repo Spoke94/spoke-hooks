@@ -1,6 +1,6 @@
 import type {
   WebhookFixture
-} from "@spokelabs/core";
+} from "@spoke-labs/core";
 
 export function createStripeFixture(
   value: unknown

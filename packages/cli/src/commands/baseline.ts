@@ -6,7 +6,7 @@ import {
   loadFixture,
   replayFixture,
   saveFixture
-} from "@spokelabs/core";
+} from "@spoke-labs/core";
 
 export async function runBaseline(): Promise<void> {
   const projectRoot = process.cwd();

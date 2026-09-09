@@ -11,12 +11,12 @@ import {
 
 import {
   loadConfig
-} from "@spokelabs/core";
+} from "@spoke-labs/core";
 
 
 import {
   createStripeFixture
-} from "@spokelabs/stripe";
+} from "@spoke-labs/stripe";
 
 export async function runAdd(
   inputPath: string | undefined
