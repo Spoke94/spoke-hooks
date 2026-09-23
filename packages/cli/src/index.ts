@@ -29,6 +29,10 @@ try {
     console.log("  spoke-hooks baseline");
     console.log("  spoke-hooks test");
     console.log("  spoke-hooks --version");
+
+    if (command !== undefined) {
+      process.exitCode = 1;
+    }
   }
 } catch (error) {
   if (error instanceof ReplayRequestError) {
