@@ -24,6 +24,9 @@ jobs:
       - name: Build project
         run: npm run build
 
+      - name: Run CLI tests
+        run: npm test
+
       - name: Start example webhook server
         run: |
           node examples/express-stripe/dist/index.js > /tmp/spoke-server.log 2>&1 &
