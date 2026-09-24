@@ -1,4 +1,8 @@
 import {
+  createInterface
+} from "node:readline/promises";
+
+import {
   mkdir,
   readFile,
   writeFile
@@ -13,13 +17,18 @@ import {
   loadConfig
 } from "@spoke-labs/core";
 
-
 import {
-  createStripeFixture
+  createStripeFixture,
+  redactStripeEvent
 } from "@spoke-labs/stripe";
 
+type AddOptions = {
+  yes?: boolean;
+};
+
 export async function runAdd(
-  inputPath: string | undefined
+  inputPath: string | undefined,
+  options: AddOptions = {}
 ): Promise<void> {
   if (!inputPath) {
     console.error(
@@ -50,20 +59,17 @@ export async function runAdd(
     content
   );
 
-  const fixture = createStripeFixture(
+  const redacted = redactStripeEvent(
     parsed
+  );
+
+  const fixture = createStripeFixture(
+    redacted
   );
 
   const eventsDir = join(
     projectRoot,
     config.eventsDir
-  );
-
-  await mkdir(
-    eventsDir,
-    {
-      recursive: true
-    }
   );
 
   const safeType = sanitizeFilePart(
@@ -81,6 +87,54 @@ export async function runAdd(
 
   const fixtureContent =
     `${JSON.stringify(fixture, null, 2)}\n`;
+
+  console.log(
+    "Spoke Hooks will store:"
+  );
+
+  console.log("");
+
+  console.log(
+    fixtureContent.trimEnd()
+  );
+
+  console.log("");
+
+  if (!options.yes) {
+    const readline = createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    let answer: string;
+
+    try {
+      answer = await readline.question(
+        "Save this fixture? [y/N] "
+      );
+    } finally {
+      readline.close();
+    }
+
+    const confirmed =
+      answer.trim().toLowerCase() === "y" ||
+      answer.trim().toLowerCase() === "yes";
+
+    if (!confirmed) {
+      console.log(
+        "Cancelled. No fixture was written."
+      );
+
+      return;
+    }
+  }
+
+  await mkdir(
+    eventsDir,
+    {
+      recursive: true
+    }
+  );
 
   try {
     await writeFile(
