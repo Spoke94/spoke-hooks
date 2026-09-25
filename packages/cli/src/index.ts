@@ -1,17 +1,29 @@
 #!/usr/bin/env node
 
 import { ReplayRequestError } from "@spoke-labs/core";
+import { readFileSync } from "node:fs";
 
 import { runAdd } from "./commands/add.js";
 import { runBaseline } from "./commands/baseline.js";
 import { runInit } from "./commands/init.js";
 import { runTest } from "./commands/test.js";
 
+const packageJson = JSON.parse(
+  readFileSync(
+    new URL("../package.json", import.meta.url),
+    "utf8"
+  )
+) as {
+  version: string;
+};
+
+const CLI_VERSION = packageJson.version;
+
 const args = process.argv.slice(2);
 const command = args[0];
 try {
   if (command === "--version") {
-    console.log("0.0.1");
+    console.log(CLI_VERSION);
   } else if (command === "init") {
     await runInit();
   } else if (command === "add") {
@@ -21,7 +33,7 @@ try {
         yes: args.includes("--yes")
       }
     );
-  }else if (command === "baseline") {
+  } else if (command === "baseline") {
     await runBaseline();
   } else if (command === "test") {
     await runTest();
