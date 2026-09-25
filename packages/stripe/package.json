@@ -1,6 +1,6 @@
 {
   "name": "@spoke-labs/stripe",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -11,6 +11,6 @@
     "access": "public"
   },
   "dependencies": {
-    "@spoke-labs/core": "0.0.2"
+    "@spoke-labs/core": "0.0.3"
   }
 }
