@@ -1,6 +1,6 @@
 {
   "name": "@spoke-labs/hooks",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "type": "module",
   "bin": {
     "spoke-hooks": "dist/index.js"
@@ -14,7 +14,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@spoke-labs/core": "0.0.1",
-    "@spoke-labs/stripe": "0.0.1"
+    "@spoke-labs/core": "0.0.2",
+    "@spoke-labs/stripe": "0.0.2"
   }
 }
