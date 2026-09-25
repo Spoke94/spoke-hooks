@@ -8,6 +8,10 @@ import {
   saveFixture
 } from "@spoke-labs/core";
 
+import {
+  createReplayRequestOptions
+} from "../replay.js";
+
 export async function runBaseline(): Promise<void> {
   const projectRoot = process.cwd();
 
@@ -27,10 +31,17 @@ export async function runBaseline(): Promise<void> {
       fixturePath
     );
 
+    const replayOptions =
+      createReplayRequestOptions(
+        fixture,
+        config
+      );
+
     const actual = await replayFixture(
       fixture,
       config.endpoint,
-      config.timeoutMs
+      config.timeoutMs,
+      replayOptions
     );
 
     fixture.baseline = actual;

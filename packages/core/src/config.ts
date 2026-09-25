@@ -1,20 +1,25 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+export interface ReplayConfig {
+  webhookSecretEnv: string;
+}
+
 export interface SpokeConfig {
   endpoint: string;
   eventsDir: string;
   timeoutMs: number;
+  replay?: ReplayConfig;
 }
 
 export const DEFAULT_SPOKE_CONFIG: SpokeConfig = {
-    endpoint: "http://localhost:3000/webhook",
-    eventsDir: ".spoke/events",
-    timeoutMs: 5000
+  endpoint: "http://localhost:3000/webhook",
+  eventsDir: ".spoke/events",
+  timeoutMs: 5000
 };
 
 export async function loadConfig(
-    projectRoot: string
+  projectRoot: string
 ): Promise<SpokeConfig> {
   const configPath = join(
     projectRoot,
@@ -31,7 +36,7 @@ export async function loadConfig(
 
   if (!isSpokeConfig(parsed)) {
     throw new Error(
-      `Invalid Spoke config: ${configPath}`  
+      `Invalid Spoke config: ${configPath}`
     );
   }
 
@@ -39,7 +44,7 @@ export async function loadConfig(
 }
 
 function isSpokeConfig(
-    value: unknown
+  value: unknown
 ): value is SpokeConfig {
   if (!isRecord(value)) {
     return false;
@@ -60,11 +65,24 @@ function isSpokeConfig(
   }
 
   if (
-    typeof value.timeoutMs != "number" ||
+    typeof value.timeoutMs !== "number" ||
     !Number.isFinite(value.timeoutMs) ||
     value.timeoutMs <= 0
   ) {
     return false;
+  }
+
+  if (value.replay !== undefined) {
+    if (!isRecord(value.replay)) {
+      return false;
+    }
+
+    if (
+      typeof value.replay.webhookSecretEnv !== "string" ||
+      value.replay.webhookSecretEnv.length === 0
+    ) {
+      return false;
+    }
   }
 
   return true;
@@ -73,5 +91,6 @@ function isSpokeConfig(
 function isRecord(
   value: unknown
 ): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+  return typeof value === "object" &&
+    value !== null;
 }

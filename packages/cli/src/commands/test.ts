@@ -8,6 +8,10 @@ import {
   replayFixture
 } from "@spoke-labs/core";
 
+import {
+  createReplayRequestOptions
+} from "../replay.js";
+
 export async function runTest(): Promise<void> {
   const projectRoot = process.cwd();
 
@@ -40,10 +44,17 @@ export async function runTest(): Promise<void> {
       continue;
     }
 
+    const replayOptions =
+      createReplayRequestOptions(
+        fixture,
+        config
+      );
+
     const actual = await replayFixture(
       fixture,
       config.endpoint,
-      config.timeoutMs
+      config.timeoutMs,
+      replayOptions
     );
 
     const comparison = compareReplayResult(

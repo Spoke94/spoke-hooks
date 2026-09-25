@@ -17,7 +17,8 @@ export {
 } from "./replay.js";
 
 export type {
-  ReplayResult
+  ReplayResult,
+  ReplayRequestOptions
 } from "./replay.js";
 
 export {

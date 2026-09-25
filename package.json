@@ -9,7 +9,7 @@
     "scripts": {
         "build": "tsc -b",
         "typecheck": "tsc -b --pretty",
-        "test": "node --test packages/cli/test/*.test.mjs packages/stripe/test/*.test.mjs"
+        "test": "node --test packages/core/test/*.test.mjs packages/cli/test/*.test.mjs packages/stripe/test/*.test.mjs examples/express-stripe/test/*.test.mjs"
     },
     "devDependencies": {
         "@types/node": "^26.4.1",

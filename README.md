@@ -72,7 +72,7 @@ The workflow is intentionally simple:
 ```text
 real webhook event
         ↓
-store as fixture
+safe local fixture
         ↓
 record known-good behavior
         ↓
@@ -109,6 +109,27 @@ Default configuration:
 
 Edit `.spoke/config.json` if your webhook endpoint or timeout is different.
 
+If your Stripe webhook handler verifies webhook signatures, enable signed replay by referencing the environment variable that contains your local or test webhook secret:
+
+```json
+{
+  "endpoint": "http://localhost:3000/webhook",
+  "eventsDir": ".spoke/events",
+  "timeoutMs": 5000,
+  "replay": {
+    "webhookSecretEnv": "STRIPE_WEBHOOK_SECRET"
+  }
+}
+```
+
+Then provide the secret when running Spoke Hooks:
+
+```bash
+export STRIPE_WEBHOOK_SECRET=whsec_...
+```
+
+The secret itself is not stored in the fixture or `.spoke/config.json`.
+
 ### 2. Add a Stripe event
 
 Given a Stripe event such as:
@@ -132,13 +153,27 @@ Import it:
 npx spoke-hooks add stripe-event.json
 ```
 
-Spoke Hooks stores the event as a fixture under:
+Before writing the fixture, Spoke Hooks redacts supported Stripe customer PII fields in memory and previews the exact fixture that will be stored.
+
+Confirm the write when prompted:
+
+```text
+Write this fixture? [y/N]
+```
+
+For non-interactive workflows:
+
+```bash
+npx spoke-hooks add stripe-event.json --yes
+```
+
+The raw input event is not persisted by `add`. Redaction is intentionally context-aware and currently covers common customer PII such as names, email addresses, phone numbers, and addresses in known Stripe customer, billing, receipt, and shipping contexts. It does not claim to detect arbitrary sensitive data in every custom field.
+
+Spoke Hooks stores the redacted fixture under:
 
 ```text
 .spoke/events/
 ```
-
-The original Stripe payload is preserved inside the fixture.
 
 At this point no expected behavior has been recorded yet.
 
@@ -172,6 +207,8 @@ npx spoke-hooks baseline
 ```
 
 Spoke Hooks sends the stored webhook payload to the configured endpoint and records the response.
+
+If signature-preserving replay is enabled, Spoke Hooks generates a fresh Stripe signature for the exact serialized request body before sending it.
 
 Example:
 
@@ -255,6 +292,94 @@ Exit code:
 
 That non-zero exit code causes CI jobs to fail.
 
+## Stripe signature-preserving replay
+
+Stripe webhook handlers commonly verify the `Stripe-Signature` header against the exact raw request body. Disabling that verification during regression tests would skip part of the real webhook path.
+
+Spoke Hooks can generate a fresh Stripe signature on every replay while leaving verification enabled in the application under test.
+
+Enable it in `.spoke/config.json`:
+
+```json
+{
+  "endpoint": "http://localhost:3000/webhook",
+  "eventsDir": ".spoke/events",
+  "timeoutMs": 5000,
+  "replay": {
+    "webhookSecretEnv": "STRIPE_WEBHOOK_SECRET"
+  }
+}
+```
+
+Set the referenced environment variable:
+
+```bash
+export STRIPE_WEBHOOK_SECRET=whsec_...
+```
+
+Then use the normal commands:
+
+```bash
+npx spoke-hooks baseline
+npx spoke-hooks test
+```
+
+During each signed replay, Spoke Hooks:
+
+1. serializes the stored fixture payload once
+2. generates a fresh Stripe signature for that exact body
+3. sends the exact same body and signature to the configured webhook endpoint
+
+This preserves the important invariant:
+
+```text
+stored fixture payload
+        ↓
+serialize once
+        ↓
+same body ─────→ Stripe signature
+        │
+        └──────→ HTTP request body
+```
+
+Spoke Hooks does **not** store the webhook secret in fixtures or configuration. `.spoke/config.json` stores only the environment variable name.
+
+Existing configurations without a `replay` section remain valid and continue to use unsigned replay.
+
+If signing is configured but the referenced environment variable is missing, Spoke Hooks exits with a non-zero status before sending the request:
+
+```text
+ERROR: Webhook signing is configured, but environment variable STRIPE_WEBHOOK_SECRET is not set.
+```
+
+Your webhook application still needs to verify Stripe signatures correctly using its raw request body.
+
+For Express, that normally means the webhook route must receive the raw body instead of a body that has already been parsed and re-serialized.
+
+Example:
+
+```ts
+app.post(
+  "/webhook",
+  express.raw({ type: "application/json" }),
+  (request, response) => {
+    const signature =
+      request.headers["stripe-signature"];
+
+    const event =
+      stripe.webhooks.constructEvent(
+        request.body,
+        signature,
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
+
+    response.status(200).json({
+      received: true
+    });
+  }
+);
+```
+
 ## CLI
 
 Current V0 commands:
@@ -290,13 +415,15 @@ Imports a Stripe event into the fixture corpus:
 npx spoke-hooks add stripe-event.json
 ```
 
-Example output:
+The command redacts supported Stripe customer PII before anything is written, previews the exact stored fixture, and asks for confirmation.
 
-```text
-Added Stripe event: invoice.payment_failed
-Fixture: /path/to/project/.spoke/events/invoice.payment_failed-evt_123.json
-Run `spoke-hooks baseline` to record expected behavior.
+Use `--yes` to skip the interactive confirmation:
+
+```bash
+npx spoke-hooks add stripe-event.json --yes
 ```
+
+Spoke Hooks refuses to silently overwrite an existing fixture.
 
 ### `baseline`
 
@@ -307,6 +434,8 @@ npx spoke-hooks baseline
 ```
 
 Use this while your application is in a known-good state.
+
+If signed replay is configured, the request is signed with a fresh Stripe signature using the configured environment variable.
 
 ### `test`
 
@@ -334,6 +463,8 @@ Prints the installed CLI version:
 npx spoke-hooks --version
 ```
 
+Unknown commands also exit with a non-zero status.
+
 ## What is compared
 
 Current V0 regression checks compare:
@@ -345,6 +476,9 @@ Spoke Hooks also treats runtime replay failures as test failures, including:
 
 - endpoint connection failures
 - request timeouts
+- missing configured webhook signing secrets
+
+Signature verification failures returned by the application are normal HTTP behavior and are therefore visible in the regression result. For example, a handler that rejects an invalid signature with HTTP `400` will differ from a baseline that expects HTTP `200`.
 
 ## Error handling
 
@@ -368,6 +502,20 @@ If the webhook handler does not respond before the configured timeout:
 
 ```text
 ERROR: Webhook request timed out after 5000 ms: http://localhost:3000/webhook
+```
+
+Exit code:
+
+```text
+1
+```
+
+### Missing webhook secret
+
+If signed replay is enabled but its environment variable is not set:
+
+```text
+ERROR: Webhook signing is configured, but environment variable STRIPE_WEBHOOK_SECRET is not set.
 ```
 
 Exit code:
@@ -426,6 +574,32 @@ Default:
 5000
 ```
 
+### `replay.webhookSecretEnv`
+
+Optional environment-variable name used for signed webhook replay.
+
+Example:
+
+```json
+{
+  "replay": {
+    "webhookSecretEnv": "STRIPE_WEBHOOK_SECRET"
+  }
+}
+```
+
+The value is the **name** of the environment variable, not the secret itself.
+
+With:
+
+```bash
+export STRIPE_WEBHOOK_SECRET=whsec_...
+```
+
+Spoke Hooks reads the secret at runtime and generates a fresh Stripe signature for each replay.
+
+If the `replay` section is omitted, Spoke Hooks keeps the existing unsigned behavior.
+
 ## GitHub Actions
 
 Spoke Hooks is designed to work as a normal CI command.
@@ -441,6 +615,15 @@ A webhook regression causes the command to exit with status code `1`, which fail
 
 Your `.spoke/events` fixtures and recorded baselines can live in the repository alongside the application code.
 
+If signed Stripe replay is enabled, provide the webhook secret through your CI secret store rather than committing it:
+
+```yaml
+- name: Run webhook regression tests
+  env:
+    STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+  run: npx spoke-hooks test
+```
+
 ## Current V0 scope
 
 The current version intentionally focuses on a narrow workflow:
@@ -449,7 +632,9 @@ The current version intentionally focuses on a narrow workflow:
 - Node.js applications
 - Express-compatible HTTP endpoints
 - JSON event fixtures
+- context-aware redaction of common Stripe customer PII during `add`
 - local HTTP replay
+- optional Stripe signature-preserving replay
 - baseline recording
 - HTTP status comparison
 - response body comparison
@@ -468,6 +653,8 @@ Spoke Hooks is currently not:
 - a production webhook gateway
 - a replacement for Stripe's developer tooling
 - a multi-provider webhook platform
+- a database-specific assertion framework
+- a queue-specific integration framework
 
 The current goal is one thing:
 
@@ -505,9 +692,16 @@ spoke-hooks
 
 Core fixture, replay, configuration, discovery, comparison, and shared type functionality.
 
+It remains provider-agnostic. Provider-specific signing logic lives outside core.
+
 ### `@spoke-labs/stripe`
 
-Stripe-specific event import and normalization functionality.
+Stripe-specific functionality, including:
+
+- Stripe event import support
+- context-aware fixture redaction
+- Stripe signature generation
+- Stripe replay request construction
 
 Users normally only need to install:
 
@@ -536,6 +730,14 @@ Run TypeScript checks:
 ```bash
 npm run typecheck
 ```
+
+Run the test suite:
+
+```bash
+npm test
+```
+
+The current regression suite covers the generic replay layer, configuration parsing, CLI signing configuration, Stripe redaction, Stripe signature generation, Stripe replay construction, and end-to-end replay through real Stripe signature verification.
 
 ## Status
 

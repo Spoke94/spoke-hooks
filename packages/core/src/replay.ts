@@ -1,5 +1,10 @@
 import type { WebhookFixture } from "./types.js";
 
+export interface ReplayRequestOptions {
+  body?: string;
+  headers?: Record<string, string>;
+}
+
 export interface ReplayResult {
   status: number;
   body: unknown;
@@ -15,7 +20,8 @@ export class ReplayRequestError extends Error {
 export async function replayFixture(
   fixture: WebhookFixture,
   url: string,
-  timeoutMs = 5000
+  timeoutMs = 5000,
+  options: ReplayRequestOptions = {}
 ): Promise<ReplayResult> {
   const controller = new AbortController();
 
@@ -23,30 +29,37 @@ export async function replayFixture(
     controller.abort();
   }, timeoutMs);
 
+  const requestBody =
+    options.body ??
+    JSON.stringify(fixture.event.payload);
+
+  const requestHeaders = {
+    "content-type": "application/json",
+    ...options.headers
+  };
+
   try {
     const response = await fetch(url, {
       method: "POST",
-      headers: {
-        "content-type": "application/json"
-      },
-      body: JSON.stringify(fixture.event.payload),
+      headers: requestHeaders,
+      body: requestBody,
       signal: controller.signal
     });
     const responseText = await response.text();
 
-    let body: unknown = null;
+    let responseBody: unknown = null;
 
     if (responseText.length > 0) {
       try {
-        body = JSON.parse(responseText);
+        responseBody = JSON.parse(responseText);
       } catch {
-        body = responseText;
+        responseBody = responseText;
       }
     }
 
     return {
       status: response.status,
-      body
+      body: responseBody
     };
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {

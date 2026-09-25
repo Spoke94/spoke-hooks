@@ -7,3 +7,11 @@ export {
 export {
   redactStripeEvent
 } from "./redaction.js";
+
+export {
+  createStripeSignatureHeader
+} from "./signature.js";
+
+export {
+  createStripeReplayRequest
+} from "./replay.js";
