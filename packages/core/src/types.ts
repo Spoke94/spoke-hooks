@@ -8,6 +8,7 @@ export interface WebhookEvent {
 export interface WebhookBaseline {
   status: number;
   body: unknown;
+  state?: unknown;
 }
 
 export interface WebhookFixture {

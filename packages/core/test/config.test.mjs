@@ -123,3 +123,80 @@ test(
     );
   }
 );
+
+test(
+  "loads assertion command configuration",
+  async () => {
+    const projectRoot =
+      await createProject({
+        endpoint:
+          "http://localhost:3000/webhook",
+        eventsDir:
+          ".spoke/events",
+        timeoutMs: 5000,
+        assertion: {
+          command: "node",
+          args: [
+            "scripts/spoke-state.mjs"
+          ],
+          timeoutMs: 1000
+        }
+      });
+
+    const config =
+      await loadConfig(
+        projectRoot
+      );
+
+    assert.deepEqual(
+      config.assertion,
+      {
+        command: "node",
+        args: [
+          "scripts/spoke-state.mjs"
+        ],
+        timeoutMs: 1000
+      }
+    );
+  }
+);
+
+test(
+  "rejects invalid assertion command configuration",
+  async () => {
+    const invalidAssertions = [
+      {},
+      {
+        command: ""
+      },
+      {
+        command: "node",
+        args: [1]
+      },
+      {
+        command: "node",
+        timeoutMs: 0
+      }
+    ];
+
+    for (const assertionConfig of invalidAssertions) {
+      const projectRoot =
+        await createProject({
+          endpoint:
+            "http://localhost:3000/webhook",
+          eventsDir:
+            ".spoke/events",
+          timeoutMs: 5000,
+          assertion:
+            assertionConfig
+        });
+
+      await assert.rejects(
+        loadConfig(
+          projectRoot
+        ),
+        /Invalid Spoke config/
+      );
+    }
+  }
+);

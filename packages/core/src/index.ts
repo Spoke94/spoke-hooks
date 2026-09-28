@@ -34,6 +34,7 @@ export type {
 } from "./replay.js";
 
 export {
+  compareAssertionState,
   compareReplayResult
 } from "./compare.js";
 
@@ -42,11 +43,17 @@ export type {
 } from "./compare.js";
 
 export {
+  runAssertionCommand,
+  AssertionCommandError
+} from "./assertion.js";
+
+export {
   DEFAULT_SPOKE_CONFIG,
   loadConfig
 } from "./config.js";
 
 export type {
+  AssertionConfig,
   SpokeConfig
 } from "./config.js";
 

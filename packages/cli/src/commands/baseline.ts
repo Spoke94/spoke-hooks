@@ -5,6 +5,7 @@ import {
   loadConfig,
   loadFixture,
   replayFixture,
+  runAssertionCommand,
   saveFixture
 } from "@spoke-labs/core";
 
@@ -44,7 +45,20 @@ export async function runBaseline(): Promise<void> {
       replayOptions
     );
 
-    fixture.baseline = actual;
+    const baseline =
+      config.assertion === undefined
+        ? actual
+        : {
+          ...actual,
+          state:
+            await runAssertionCommand(
+              config.assertion,
+              projectRoot,
+              fixture
+            )
+        };
+
+    fixture.baseline = baseline;
 
     await saveFixture(
       fixturePath,
@@ -54,6 +68,6 @@ export async function runBaseline(): Promise<void> {
     console.log("");
     console.log(`Event: ${fixture.event.type}`);
     console.log("Baseline updated:");
-    console.log(actual);
+    console.log(baseline);
   }
 }

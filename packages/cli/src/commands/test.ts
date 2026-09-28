@@ -1,11 +1,13 @@
 import { join } from "node:path";
 
 import {
+  compareAssertionState,
   compareReplayResult,
   listFixturePaths,
   loadConfig,
   loadFixture,
-  replayFixture
+  replayFixture,
+  runAssertionCommand
 } from "@spoke-labs/core";
 
 import {
@@ -35,9 +37,30 @@ export async function runTest(): Promise<void> {
 
     if (fixture.baseline === null) {
       console.error("");
-      console.error(`Event: ${fixture.event.type}`);
+      console.error(
+        `Event: ${fixture.event.type}`
+      );
       console.error(
         "FAIL: No baseline recorded. Run `spoke-hooks baseline` first."
+      );
+
+      hasFailure = true;
+      continue;
+    }
+
+    if (
+      config.assertion !== undefined &&
+      !Object.prototype.hasOwnProperty.call(
+        fixture.baseline,
+        "state"
+      )
+    ) {
+      console.error("");
+      console.error(
+        `Event: ${fixture.event.type}`
+      );
+      console.error(
+        "FAIL: No assertion state baseline recorded. Run `spoke-hooks baseline` first."
       );
 
       hasFailure = true;
@@ -50,27 +73,71 @@ export async function runTest(): Promise<void> {
         config
       );
 
-    const actual = await replayFixture(
-      fixture,
-      config.endpoint,
-      config.timeoutMs,
-      replayOptions
-    );
+    const actual =
+      await replayFixture(
+        fixture,
+        config.endpoint,
+        config.timeoutMs,
+        replayOptions
+      );
 
-    const comparison = compareReplayResult(
-      fixture.baseline,
-      actual
-    );
+    const state =
+      config.assertion === undefined
+        ? undefined
+        : await runAssertionCommand(
+            config.assertion,
+            projectRoot,
+            fixture
+          );
+
+    const comparison =
+      compareReplayResult(
+        fixture.baseline,
+        actual
+      );
+
+    const stateMatches =
+      config.assertion === undefined ||
+      compareAssertionState(
+        fixture.baseline.state,
+        state
+      );
+
+    const actualOutput =
+      config.assertion === undefined
+        ? actual
+        : {
+            ...actual,
+            state
+          };
 
     console.log("");
-    console.log(`Event: ${fixture.event.type}`);
-    console.log("Expected:", fixture.baseline);
-    console.log("Actual:", actual);
+    console.log(
+      `Event: ${fixture.event.type}`
+    );
+    console.log(
+      "Expected:",
+      fixture.baseline
+    );
+    console.log(
+      "Actual:",
+      actualOutput
+    );
 
-    if (comparison.passed) {
+    if (
+      comparison.passed &&
+      stateMatches
+    ) {
       console.log("PASS");
     } else {
       console.error("FAIL");
+
+      if (!stateMatches) {
+        console.error(
+          "Assertion state does not match the recorded baseline."
+        );
+      }
+
       hasFailure = true;
     }
   }

@@ -130,6 +130,23 @@ export STRIPE_WEBHOOK_SECRET=whsec_...
 
 The secret itself is not stored in the fixture or `.spoke/config.json`.
 
+If you also want to verify application side effects after each replay, configure an optional generic assertion command:
+
+```json
+{
+  "endpoint": "http://localhost:3000/webhook",
+  "eventsDir": ".spoke/events",
+  "timeoutMs": 5000,
+  "assertion": {
+    "command": "node",
+    "args": ["scripts/spoke-state.mjs"],
+    "timeoutMs": 5000
+  }
+}
+```
+
+The command can inspect whatever state matters to your application and must write one valid JSON value to stdout. Spoke Hooks stores that value in the baseline and compares it exactly during `test`.
+
 ### 2. Add a Stripe event
 
 Given a Stripe event such as:
@@ -208,6 +225,8 @@ npx spoke-hooks baseline
 
 Spoke Hooks sends the stored webhook payload to the configured endpoint and records the response.
 
+If a side-effect assertion command is configured, Spoke Hooks runs it after the replay and records the returned JSON state in the same baseline.
+
 If signature-preserving replay is enabled, Spoke Hooks generates a fresh Stripe signature for the exact serialized request body before sending it.
 
 Example:
@@ -241,6 +260,23 @@ The fixture now contains the known-good behavior:
     "status": 200,
     "body": {
       "received": true
+    }
+  }
+}
+```
+
+With a configured side-effect assertion, the same baseline can also include application state:
+
+```json
+{
+  "baseline": {
+    "status": 200,
+    "body": {
+      "received": true
+    },
+    "state": {
+      "subscriptionStatus": "active",
+      "processedCount": 1
     }
   }
 }
@@ -291,6 +327,8 @@ Exit code:
 ```
 
 That non-zero exit code causes CI jobs to fail.
+
+When a side-effect assertion is configured, both the HTTP result and returned state must match the recorded baseline. A state mismatch also produces `FAIL` and exit code `1`.
 
 ## Stripe signature-preserving replay
 
@@ -380,6 +418,118 @@ app.post(
 );
 ```
 
+## Generic side-effect assertions
+
+An HTTP `200` response does not always mean the webhook produced the correct application state. A handler can return successfully while writing the wrong row, applying an effect twice, skipping a state transition, or producing an incorrect derived value.
+
+Spoke Hooks supports an optional provider-agnostic assertion command that runs after each replay and returns the state you want to regression-test.
+
+Configure it in `.spoke/config.json`:
+
+```json
+{
+  "endpoint": "http://localhost:3000/webhook",
+  "eventsDir": ".spoke/events",
+  "timeoutMs": 5000,
+  "assertion": {
+    "command": "node",
+    "args": ["scripts/spoke-state.mjs"],
+    "timeoutMs": 5000
+  }
+}
+```
+
+The command and arguments are passed separately. Spoke Hooks does not invoke the assertion through a shell.
+
+The assertion command:
+
+- runs from the project root
+- inherits the current environment
+- receives `SPOKE_EVENT_ID`
+- receives `SPOKE_EVENT_PROVIDER`
+- receives `SPOKE_EVENT_TYPE`
+- must write exactly one valid JSON value to stdout
+- can write diagnostic messages to stderr
+
+For example, a project-defined script might read application state and return a structured snapshot:
+
+```js
+import { readFile } from "node:fs/promises";
+
+const state = JSON.parse(
+  await readFile("test-state.json", "utf8")
+);
+
+console.log(
+  JSON.stringify({
+    eventId: process.env.SPOKE_EVENT_ID,
+    subscriptionStatus: state.subscriptionStatus,
+    processedCount: state.processedCount
+  })
+);
+```
+
+The storage or application mechanism is intentionally outside Spoke Hooks. The script can query PostgreSQL, Redis, MongoDB, an internal API, a queue-derived projection, a local file, or any other project-specific source. Spoke Hooks only executes the command, captures its JSON result, and compares that result against the recorded baseline.
+
+The workflow is:
+
+```text
+webhook replay
+      ↓
+HTTP result
+      +
+assertion command
+      ↓
+JSON state
+      ↓
+baseline / exact comparison
+      ↓
+PASS / FAIL
+```
+
+During `baseline`, the assertion result is stored under `baseline.state`:
+
+```json
+{
+  "baseline": {
+    "status": 200,
+    "body": {
+      "received": true
+    },
+    "state": {
+      "subscriptionStatus": "active",
+      "processedCount": 1
+    }
+  }
+}
+```
+
+During `test`, Spoke Hooks runs the assertion again and performs exact deep comparison against the recorded state. Values are not normalized or coerced, so `1` and `"1"` are different and array order remains significant.
+
+If assertion configuration is added to a project but an existing fixture does not contain `baseline.state`, `spoke-hooks test` fails before sending the webhook request:
+
+```text
+FAIL: No assertion state baseline recorded. Run `spoke-hooks baseline` first.
+```
+
+Assertion command failures also fail the CLI with exit code `1`, including:
+
+- command start failures
+- non-zero exit codes
+- empty stdout
+- invalid JSON output
+- assertion timeouts
+
+Example:
+
+```text
+ERROR: Assertion command exited with code 9: assertion failed
+```
+
+Assertion output becomes part of the stored fixture baseline. Do not return secrets, credentials, tokens, raw sensitive customer data, or other values that should not be committed to the repository.
+
+This first assertion mechanism is deliberately small. It does not include database-specific adapters, queue-specific integrations, state normalization, condition polling, or duplicate-delivery orchestration.
+
 ## CLI
 
 Current V0 commands:
@@ -427,7 +577,7 @@ Spoke Hooks refuses to silently overwrite an existing fixture.
 
 ### `baseline`
 
-Replays every stored fixture against the configured webhook endpoint and records the current response as expected behavior:
+Replays every stored fixture against the configured webhook endpoint and records the current response as expected behavior. If a side-effect assertion is configured, its JSON result is recorded as `baseline.state` as well:
 
 ```bash
 npx spoke-hooks baseline
@@ -445,9 +595,9 @@ Replays the stored fixtures without changing their baselines:
 npx spoke-hooks test
 ```
 
-The current response is compared against the recorded response.
+The current response is compared against the recorded response. If a side-effect assertion is configured, the current assertion state is also compared exactly against `baseline.state`.
 
-A difference produces:
+A difference in either HTTP behavior or assertion state produces:
 
 ```text
 FAIL
@@ -471,12 +621,18 @@ Current V0 regression checks compare:
 
 - HTTP response status
 - response body
+- optional side-effect assertion state using exact deep comparison
 
-Spoke Hooks also treats runtime replay failures as test failures, including:
+Spoke Hooks also treats runtime replay or assertion failures as test failures, including:
 
 - endpoint connection failures
 - request timeouts
 - missing configured webhook signing secrets
+- assertion command start failures
+- assertion command non-zero exits
+- assertion command timeouts
+- empty assertion output
+- invalid assertion JSON
 
 Signature verification failures returned by the application are normal HTTP behavior and are therefore visible in the regression result. For example, a handler that rejects an invalid signature with HTTP `400` will differ from a baseline that expects HTTP `200`.
 
@@ -523,6 +679,18 @@ Exit code:
 ```text
 1
 ```
+
+### Assertion command failure
+
+If a configured assertion command cannot produce a valid state snapshot, Spoke Hooks exits with status code `1`.
+
+For example:
+
+```text
+ERROR: Assertion command exited with code 9: assertion failed
+```
+
+Timeouts, command start failures, empty stdout, and invalid JSON are reported as assertion errors as well.
 
 ## Configuration
 
@@ -600,6 +768,47 @@ Spoke Hooks reads the secret at runtime and generates a fresh Stripe signature f
 
 If the `replay` section is omitted, Spoke Hooks keeps the existing unsigned behavior.
 
+### `assertion.command`
+
+Optional executable used to capture project-defined side-effect state after each webhook replay.
+
+Example:
+
+```json
+{
+  "assertion": {
+    "command": "node",
+    "args": ["scripts/spoke-state.mjs"],
+    "timeoutMs": 5000
+  }
+}
+```
+
+The command is executed directly rather than through a shell. It runs from the project root and must write one valid JSON value to stdout.
+
+### `assertion.args`
+
+Optional array of arguments passed directly to the assertion command.
+
+Example:
+
+```json
+{
+  "assertion": {
+    "command": "node",
+    "args": ["scripts/spoke-state.mjs", "--mode", "test"]
+  }
+}
+```
+
+### `assertion.timeoutMs`
+
+Optional timeout for the assertion command. If omitted, Spoke Hooks uses its assertion-command default timeout.
+
+A timeout is treated as a test failure.
+
+If the entire `assertion` section is omitted, Spoke Hooks keeps the existing HTTP-only baseline and test behavior.
+
 ## GitHub Actions
 
 Spoke Hooks is designed to work as a normal CI command.
@@ -638,6 +847,8 @@ The current version intentionally focuses on a narrow workflow:
 - baseline recording
 - HTTP status comparison
 - response body comparison
+- optional generic command-based side-effect assertions
+- exact side-effect state comparison
 - timeout handling
 - connection error handling
 - CI-friendly exit codes
@@ -690,9 +901,9 @@ spoke-hooks
 
 ### `@spoke-labs/core`
 
-Core fixture, replay, configuration, discovery, comparison, and shared type functionality.
+Core fixture, replay, configuration, discovery, comparison, assertion-command execution, and shared type functionality.
 
-It remains provider-agnostic. Provider-specific signing logic lives outside core.
+It remains provider-agnostic. Provider-specific signing logic and project-specific state inspection live outside core.
 
 ### `@spoke-labs/stripe`
 
@@ -737,7 +948,7 @@ Run the test suite:
 npm test
 ```
 
-The current regression suite covers the generic replay layer, configuration parsing, CLI signing configuration, Stripe redaction, Stripe signature generation, Stripe replay construction, and end-to-end replay through real Stripe signature verification.
+The current regression suite covers the generic replay layer, configuration parsing, CLI signing configuration, assertion command execution, assertion-state comparison, baseline state capture, CLI assertion pass/fail behavior, Stripe redaction, Stripe signature generation, Stripe replay construction, and end-to-end replay through real Stripe signature verification.
 
 ## Status
 

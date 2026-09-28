@@ -5,11 +5,18 @@ export interface ReplayConfig {
   webhookSecretEnv: string;
 }
 
+export interface AssertionConfig {
+  command: string;
+  args?: string[];
+  timeoutMs?: number;
+}
+
 export interface SpokeConfig {
   endpoint: string;
   eventsDir: string;
   timeoutMs: number;
   replay?: ReplayConfig;
+  assertion?: AssertionConfig;
 }
 
 export const DEFAULT_SPOKE_CONFIG: SpokeConfig = {
@@ -80,6 +87,42 @@ function isSpokeConfig(
     if (
       typeof value.replay.webhookSecretEnv !== "string" ||
       value.replay.webhookSecretEnv.length === 0
+    ) {
+      return false;
+    }
+  }
+
+  if (value.assertion !== undefined) {
+    if (!isRecord(value.assertion)) {
+      return false;
+    }
+
+    if (
+      typeof value.assertion.command !== "string" ||
+      value.assertion.command.length === 0
+    ) {
+      return false;
+    }
+
+    if (
+      value.assertion.args !== undefined &&
+      (
+        !Array.isArray(value.assertion.args) ||
+        !value.assertion.args.every(
+          (argument) => typeof argument === "string"
+        )
+      )
+    ) {
+      return false;
+    }
+
+    if (
+      value.assertion.timeoutMs !== undefined &&
+      (
+        typeof value.assertion.timeoutMs !== "number" ||
+        !Number.isFinite(value.assertion.timeoutMs) ||
+        value.assertion.timeoutMs <= 0
+      )
     ) {
       return false;
     }

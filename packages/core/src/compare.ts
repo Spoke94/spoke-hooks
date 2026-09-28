@@ -22,3 +22,13 @@ export function compareReplayResult(
     bodyMatches
   };
 }
+
+export function compareAssertionState(
+  expected: unknown,
+  actual: unknown
+): boolean {
+  return isDeepStrictEqual(
+    expected,
+    actual
+  );
+}

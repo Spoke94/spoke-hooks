@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
-import { ReplayRequestError } from "@spoke-labs/core";
+import {
+  AssertionCommandError,
+  ReplayRequestError
+} from "@spoke-labs/core";
 import { readFileSync } from "node:fs";
 
 import { runAdd } from "./commands/add.js";
@@ -52,8 +55,13 @@ try {
     }
   }
 } catch (error) {
-  if (error instanceof ReplayRequestError) {
-    console.error(`ERROR: ${error.message}`);
+  if (
+    error instanceof ReplayRequestError ||
+    error instanceof AssertionCommandError
+  ) {
+    console.error(
+      `ERROR: ${error.message}`
+    );
     process.exitCode = 1;
   } else {
     throw error;
