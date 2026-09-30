@@ -147,6 +147,21 @@ If you also want to verify application side effects after each replay, configure
 
 The command can inspect whatever state matters to your application and must write one valid JSON value to stdout. Spoke Hooks stores that value in the baseline and compares it exactly during `test`.
 
+To exercise sequential duplicate delivery behavior, configure the number of additional deliveries to replay after the primary delivery:
+
+```json
+{
+  "endpoint": "http://localhost:3000/webhook",
+  "eventsDir": ".spoke/events",
+  "timeoutMs": 5000,
+  "duplicates": {
+    "sequential": 1
+  }
+}
+```
+
+A value of `1` means two total deliveries: the primary delivery followed by one sequential duplicate.
+
 ### 2. Add a Stripe event
 
 Given a Stripe event such as:
@@ -227,7 +242,9 @@ Spoke Hooks sends the stored webhook payload to the configured endpoint and reco
 
 If a side-effect assertion command is configured, Spoke Hooks runs it after the replay and records the returned JSON state in the same baseline.
 
-If signature-preserving replay is enabled, Spoke Hooks generates a fresh Stripe signature for the exact serialized request body before sending it.
+If sequential duplicate replay is configured, Spoke Hooks then replays the same fixture the configured number of additional times and records each observation in order under `baseline.sequentialDuplicates`. When assertions are enabled, the assertion command runs immediately after every delivery so each observation records its own state.
+
+If signature-preserving replay is enabled, Spoke Hooks generates a fresh Stripe signature for the exact serialized request body before sending each delivery.
 
 Example:
 
@@ -329,6 +346,8 @@ Exit code:
 That non-zero exit code causes CI jobs to fail.
 
 When a side-effect assertion is configured, both the HTTP result and returned state must match the recorded baseline. A state mismatch also produces `FAIL` and exit code `1`.
+
+When sequential duplicate replay is configured, Spoke Hooks also replays and compares each recorded duplicate observation in order. A duplicate-only HTTP or side-effect regression also produces `FAIL` and exit code `1`.
 
 ## Stripe signature-preserving replay
 
@@ -528,7 +547,126 @@ ERROR: Assertion command exited with code 9: assertion failed
 
 Assertion output becomes part of the stored fixture baseline. Do not return secrets, credentials, tokens, raw sensitive customer data, or other values that should not be committed to the repository.
 
-This first assertion mechanism is deliberately small. It does not include database-specific adapters, queue-specific integrations, state normalization, condition polling, or duplicate-delivery orchestration.
+This assertion mechanism is deliberately small. It does not include database-specific adapters, queue-specific integrations, state normalization, condition polling, or concurrent duplicate-delivery testing. Sequential duplicate replay is supported through the generic duplicate replay configuration.
+
+## Sequential duplicate replay
+
+Webhook providers can deliver the same event more than once. A handler may return the same HTTP response on every delivery while still applying a business side effect twice.
+
+Spoke Hooks can replay additional deliveries sequentially after the primary delivery and record the known-good behavior of every position in that sequence.
+
+Configure it in `.spoke/config.json`:
+
+```json
+{
+  "endpoint": "http://localhost:3000/webhook",
+  "eventsDir": ".spoke/events",
+  "timeoutMs": 5000,
+  "duplicates": {
+    "sequential": 1
+  }
+}
+```
+
+`duplicates.sequential` is the number of additional deliveries after the primary delivery.
+
+For example:
+
+```text
+duplicates.sequential = 1
+
+primary delivery
+      ↓
+sequential duplicate #1
+```
+
+That produces two total deliveries.
+
+With:
+
+```text
+duplicates.sequential = 2
+```
+
+the sequence is:
+
+```text
+primary delivery
+      ↓
+sequential duplicate #1
+      ↓
+sequential duplicate #2
+```
+
+That produces three total deliveries.
+
+The value must be a positive integer. If the `duplicates` section is omitted, Spoke Hooks performs only the primary replay and preserves the existing behavior.
+
+During `baseline`, every delivery is observed independently. The primary observation remains directly under `baseline`, while additional observations are stored in order under `baseline.sequentialDuplicates`.
+
+Example:
+
+```json
+{
+  "baseline": {
+    "status": 200,
+    "body": {
+      "delivery": 1
+    },
+    "sequentialDuplicates": [
+      {
+        "status": 200,
+        "body": {
+          "delivery": 2
+        }
+      }
+    ]
+  }
+}
+```
+
+Spoke Hooks does not assume a duplicate delivery must return the same response as the primary delivery. Each position in the known-good sequence is recorded independently and compared with the corresponding delivery during `test`.
+
+If a side-effect assertion is also configured, the assertion command runs immediately after every delivery:
+
+```json
+{
+  "baseline": {
+    "status": 200,
+    "body": {
+      "received": true
+    },
+    "state": {
+      "processedCount": 1
+    },
+    "sequentialDuplicates": [
+      {
+        "status": 200,
+        "body": {
+          "received": true
+        },
+        "state": {
+          "processedCount": 1
+        }
+      }
+    ]
+  }
+}
+```
+
+This allows Spoke Hooks to detect a duplicate-only side-effect regression even when both deliveries still return HTTP `200`.
+
+The baseline file is saved only after the complete configured sequence has been captured successfully. If a later delivery or assertion fails before the sequence is complete, Spoke Hooks does not persist a partial replacement baseline.
+
+Before `spoke-hooks test` sends any webhook request, it verifies that:
+
+- the configured sequential duplicate count matches the recorded duplicate observation count
+- the primary assertion state exists when assertions are configured
+- every recorded duplicate also contains assertion state when assertions are configured
+
+If those preflight checks fail, the command exits non-zero without replaying the webhook.
+
+Sequential duplicate replay is intentionally ordered and deterministic. Concurrent duplicate replay and condition/polling support are separate concerns and are not part of this feature.
 
 ## CLI
 
@@ -577,7 +715,7 @@ Spoke Hooks refuses to silently overwrite an existing fixture.
 
 ### `baseline`
 
-Replays every stored fixture against the configured webhook endpoint and records the current response as expected behavior. If a side-effect assertion is configured, its JSON result is recorded as `baseline.state` as well:
+Replays every stored fixture against the configured webhook endpoint and records the current response as expected behavior. If a side-effect assertion is configured, its JSON result is recorded as `baseline.state` as well. If sequential duplicate replay is configured, the additional observations are recorded in order under `baseline.sequentialDuplicates`:
 
 ```bash
 npx spoke-hooks baseline
@@ -585,7 +723,7 @@ npx spoke-hooks baseline
 
 Use this while your application is in a known-good state.
 
-If signed replay is configured, the request is signed with a fresh Stripe signature using the configured environment variable.
+If signed replay is configured, every delivery is signed with a fresh Stripe signature using the configured environment variable.
 
 ### `test`
 
@@ -595,9 +733,9 @@ Replays the stored fixtures without changing their baselines:
 npx spoke-hooks test
 ```
 
-The current response is compared against the recorded response. If a side-effect assertion is configured, the current assertion state is also compared exactly against `baseline.state`.
+The current response is compared against the recorded response. If a side-effect assertion is configured, the current assertion state is also compared exactly against `baseline.state`. If sequential duplicate replay is configured, every additional delivery is compared in order against its own recorded duplicate observation.
 
-A difference in either HTTP behavior or assertion state produces:
+A difference in HTTP behavior, assertion state, or any configured duplicate observation produces:
 
 ```text
 FAIL
@@ -622,6 +760,7 @@ Current V0 regression checks compare:
 - HTTP response status
 - response body
 - optional side-effect assertion state using exact deep comparison
+- each configured sequential duplicate against its own recorded HTTP and optional assertion-state observation
 
 Spoke Hooks also treats runtime replay or assertion failures as test failures, including:
 
@@ -809,6 +948,36 @@ A timeout is treated as a test failure.
 
 If the entire `assertion` section is omitted, Spoke Hooks keeps the existing HTTP-only baseline and test behavior.
 
+### `duplicates.sequential`
+
+Optional positive integer specifying how many additional sequential deliveries Spoke Hooks should replay after the primary delivery.
+
+Example:
+
+```json
+{
+  "duplicates": {
+    "sequential": 1
+  }
+}
+```
+
+`1` means one primary delivery plus one sequential duplicate, for two total deliveries.
+
+`2` means one primary delivery plus two sequential duplicates, for three total deliveries.
+
+During `baseline`, duplicate observations are stored in order under `baseline.sequentialDuplicates`.
+
+During `test`, the configured sequence is replayed in the same order and every observation is compared against its own recorded baseline.
+
+Spoke Hooks does not require duplicate responses to equal the primary response.
+
+If side-effect assertions are configured, an assertion is captured after every delivery and stored with that delivery's observation.
+
+Before replay begins, `test` verifies that the configured duplicate count matches the recorded sequence and that required assertion-state baselines exist. A stale or incomplete duplicate baseline fails before any webhook request is sent.
+
+If the entire `duplicates` section is omitted, Spoke Hooks performs only the primary replay.
+
 ## GitHub Actions
 
 Spoke Hooks is designed to work as a normal CI command.
@@ -844,6 +1013,8 @@ The current version intentionally focuses on a narrow workflow:
 - context-aware redaction of common Stripe customer PII during `add`
 - local HTTP replay
 - optional Stripe signature-preserving replay
+- sequential duplicate webhook replay
+- ordered duplicate observation comparison
 - baseline recording
 - HTTP status comparison
 - response body comparison
@@ -866,6 +1037,8 @@ Spoke Hooks is currently not:
 - a multi-provider webhook platform
 - a database-specific assertion framework
 - a queue-specific integration framework
+- a concurrent duplicate-delivery or load-testing tool
+- a condition-polling framework
 
 The current goal is one thing:
 
@@ -948,7 +1121,7 @@ Run the test suite:
 npm test
 ```
 
-The current regression suite covers the generic replay layer, configuration parsing, CLI signing configuration, assertion command execution, assertion-state comparison, baseline state capture, CLI assertion pass/fail behavior, Stripe redaction, Stripe signature generation, Stripe replay construction, and end-to-end replay through real Stripe signature verification.
+The current regression suite covers the generic replay layer, configuration parsing, CLI signing configuration, assertion command execution, assertion-state comparison, sequential duplicate configuration and fixture validation, ordered duplicate baseline capture and replay, duplicate-only HTTP and assertion-state regressions, multi-duplicate ordering, baseline state capture, CLI assertion pass/fail behavior, Stripe redaction, Stripe signature generation, Stripe replay construction, and end-to-end replay through real Stripe signature verification.
 
 ## Status
 

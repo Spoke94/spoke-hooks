@@ -58,13 +58,46 @@ function isWebhookFixture(value: unknown): value is WebhookFixture {
       return false;
     }
 
-    if (typeof baseline.status !== "number") {
+    if (!isWebhookObservation(baseline)) {
       return false;
     }
 
-    if (!("body" in baseline)) {
+    const sequentialDuplicates =
+      baseline.sequentialDuplicates;
+
+    if (
+      sequentialDuplicates !== undefined &&
+      (
+        !Array.isArray(
+          sequentialDuplicates
+        ) ||
+        !sequentialDuplicates.every(
+          isWebhookObservation
+        )
+      )
+    ) {
       return false;
     }
+  }
+
+  return true;
+}
+
+function isWebhookObservation(
+  value: unknown
+): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (
+    typeof value.status !== "number"
+  ) {
+    return false;
+  }
+
+  if (!("body" in value)) {
+    return false;
   }
 
   return true;

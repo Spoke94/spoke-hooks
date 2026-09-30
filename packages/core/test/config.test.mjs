@@ -200,3 +200,73 @@ test(
     }
   }
 );
+
+test(
+  "loads sequential duplicate replay configuration",
+  async () => {
+    const projectRoot =
+      await createProject({
+        endpoint:
+          "http://localhost:3000/webhook",
+        eventsDir:
+          ".spoke/events",
+        timeoutMs: 5000,
+        duplicates: {
+          sequential: 1
+        }
+      });
+
+    const config =
+      await loadConfig(
+        projectRoot
+      );
+
+    assert.deepEqual(
+      config.duplicates,
+      {
+        sequential: 1
+      }
+    );
+  }
+);
+
+test(
+  "rejects invalid sequential duplicate replay configuration",
+  async () => {
+    const invalidDuplicates = [
+      {},
+      {
+        sequential: 0
+      },
+      {
+        sequential: -1
+      },
+      {
+        sequential: 1.5
+      },
+      {
+        sequential: "1"
+      }
+    ];
+
+    for (const duplicateConfig of invalidDuplicates) {
+      const projectRoot =
+        await createProject({
+          endpoint:
+            "http://localhost:3000/webhook",
+          eventsDir:
+            ".spoke/events",
+          timeoutMs: 5000,
+          duplicates:
+            duplicateConfig
+        });
+
+      await assert.rejects(
+        loadConfig(
+          projectRoot
+        ),
+        /Invalid Spoke config/
+      );
+    }
+  }
+);

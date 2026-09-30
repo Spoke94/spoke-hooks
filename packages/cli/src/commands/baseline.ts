@@ -4,58 +4,75 @@ import {
   listFixturePaths,
   loadConfig,
   loadFixture,
-  replayFixture,
-  runAssertionCommand,
   saveFixture
 } from "@spoke-labs/core";
 
+import type {
+  WebhookObservation
+} from "@spoke-labs/core";
+
 import {
-  createReplayRequestOptions
-} from "../replay.js";
+  captureObservation
+} from "../observation.js";
 
 export async function runBaseline(): Promise<void> {
   const projectRoot = process.cwd();
 
-  const config = await loadConfig(projectRoot);
+  const config =
+    await loadConfig(
+      projectRoot
+    );
 
-  const eventsDir = join(
-    projectRoot,
-    config.eventsDir
-  );
+  const eventsDir =
+    join(
+      projectRoot,
+      config.eventsDir
+    );
 
-  const fixturePaths = await listFixturePaths(
-    eventsDir
-  );
+  const fixturePaths =
+    await listFixturePaths(
+      eventsDir
+    );
 
   for (const fixturePath of fixturePaths) {
-    const fixture = await loadFixture(
-      fixturePath
-    );
-
-    const replayOptions =
-      createReplayRequestOptions(
-        fixture,
-        config
+    const fixture =
+      await loadFixture(
+        fixturePath
       );
 
-    const actual = await replayFixture(
-      fixture,
-      config.endpoint,
-      config.timeoutMs,
-      replayOptions
-    );
+    const primary =
+      await captureObservation(
+        fixture,
+        config,
+        projectRoot
+      );
+
+    const sequentialDuplicates:
+      WebhookObservation[] = [];
+
+    const sequentialCount =
+      config.duplicates?.sequential ?? 0;
+
+    for (
+      let duplicateIndex = 0;
+      duplicateIndex < sequentialCount;
+      duplicateIndex += 1
+    ) {
+      sequentialDuplicates.push(
+        await captureObservation(
+          fixture,
+          config,
+          projectRoot
+        )
+      );
+    }
 
     const baseline =
-      config.assertion === undefined
-        ? actual
+      sequentialDuplicates.length === 0
+        ? primary
         : {
-          ...actual,
-          state:
-            await runAssertionCommand(
-              config.assertion,
-              projectRoot,
-              fixture
-            )
+          ...primary,
+          sequentialDuplicates
         };
 
     fixture.baseline = baseline;
@@ -66,8 +83,14 @@ export async function runBaseline(): Promise<void> {
     );
 
     console.log("");
-    console.log(`Event: ${fixture.event.type}`);
-    console.log("Baseline updated:");
-    console.log(baseline);
+    console.log(
+      `Event: ${fixture.event.type}`
+    );
+    console.log(
+      "Baseline updated:"
+    );
+    console.log(
+      baseline
+    );
   }
 }

@@ -1,6 +1,8 @@
 import { isDeepStrictEqual } from "node:util";
 
-import type { WebhookBaseline } from "./types.js";
+import type {
+  WebhookObservation
+} from "./types.js";
 import type { ReplayResult } from "./replay.js";
 
 export interface ComparisonResult {
@@ -10,7 +12,7 @@ export interface ComparisonResult {
 }
 
 export function compareReplayResult(
-  baseline: WebhookBaseline,
+  baseline: WebhookObservation,
   actual: ReplayResult
 ): ComparisonResult {
   const statusMatches = baseline.status === actual.status;

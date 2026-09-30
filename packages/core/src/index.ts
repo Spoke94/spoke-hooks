@@ -14,6 +14,7 @@ export const CORE_VERSION =
 
 export type {
   WebhookEvent,
+  WebhookObservation,
   WebhookBaseline,
   WebhookFixture
 } from "./types.js";
@@ -54,6 +55,7 @@ export {
 
 export type {
   AssertionConfig,
+  DuplicateReplayConfig,
   SpokeConfig
 } from "./config.js";
 

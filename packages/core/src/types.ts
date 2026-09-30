@@ -5,10 +5,15 @@ export interface WebhookEvent {
   payload: unknown;
 }
 
-export interface WebhookBaseline {
+export interface WebhookObservation {
   status: number;
   body: unknown;
   state?: unknown;
+}
+
+export interface WebhookBaseline
+  extends WebhookObservation {
+  sequentialDuplicates?: WebhookObservation[];
 }
 
 export interface WebhookFixture {

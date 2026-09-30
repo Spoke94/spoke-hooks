@@ -11,12 +11,17 @@ export interface AssertionConfig {
   timeoutMs?: number;
 }
 
+export interface DuplicateReplayConfig {
+  sequential: number;
+}
+
 export interface SpokeConfig {
   endpoint: string;
   eventsDir: string;
   timeoutMs: number;
   replay?: ReplayConfig;
   assertion?: AssertionConfig;
+  duplicates?: DuplicateReplayConfig;
 }
 
 export const DEFAULT_SPOKE_CONFIG: SpokeConfig = {
@@ -123,6 +128,22 @@ function isSpokeConfig(
         !Number.isFinite(value.assertion.timeoutMs) ||
         value.assertion.timeoutMs <= 0
       )
+    ) {
+      return false;
+    }
+  }
+
+  if (value.duplicates !== undefined) {
+    if (!isRecord(value.duplicates)) {
+      return false;
+    }
+
+    if (
+      typeof value.duplicates.sequential !== "number" ||
+      !Number.isInteger(
+        value.duplicates.sequential
+      ) ||
+      value.duplicates.sequential <= 0
     ) {
       return false;
     }

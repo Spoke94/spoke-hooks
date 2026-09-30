@@ -5,35 +5,39 @@ import {
   compareReplayResult,
   listFixturePaths,
   loadConfig,
-  loadFixture,
-  replayFixture,
-  runAssertionCommand
+  loadFixture
 } from "@spoke-labs/core";
 
 import {
-  createReplayRequestOptions
-} from "../replay.js";
+  captureObservation
+} from "../observation.js";
 
 export async function runTest(): Promise<void> {
   const projectRoot = process.cwd();
 
-  const config = await loadConfig(projectRoot);
+  const config =
+    await loadConfig(
+      projectRoot
+    );
 
-  const eventsDir = join(
-    projectRoot,
-    config.eventsDir
-  );
+  const eventsDir =
+    join(
+      projectRoot,
+      config.eventsDir
+    );
 
-  const fixturePaths = await listFixturePaths(
-    eventsDir
-  );
+  const fixturePaths =
+    await listFixturePaths(
+      eventsDir
+    );
 
   let hasFailure = false;
 
   for (const fixturePath of fixturePaths) {
-    const fixture = await loadFixture(
-      fixturePath
-    );
+    const fixture =
+      await loadFixture(
+        fixturePath
+      );
 
     if (fixture.baseline === null) {
       console.error("");
@@ -67,28 +71,56 @@ export async function runTest(): Promise<void> {
       continue;
     }
 
-    const replayOptions =
-      createReplayRequestOptions(
-        fixture,
-        config
+    const sequentialCount =
+      config.duplicates?.sequential ?? 0;
+
+    const sequentialDuplicates =
+      fixture.baseline.sequentialDuplicates ?? [];
+
+    if (
+      sequentialDuplicates.length !==
+      sequentialCount
+    ) {
+      console.error("");
+      console.error(
+        `Event: ${fixture.event.type}`
       );
+      console.error(
+        "FAIL: Sequential duplicate baseline does not match the configured replay count. Run `spoke-hooks baseline` first."
+      );
+
+      hasFailure = true;
+      continue;
+    }
+
+    if (
+      config.assertion !== undefined &&
+      sequentialDuplicates.some(
+        (observation) =>
+          !Object.prototype.hasOwnProperty.call(
+            observation,
+            "state"
+          )
+      )
+    ) {
+      console.error("");
+      console.error(
+        `Event: ${fixture.event.type}`
+      );
+      console.error(
+        "FAIL: No assertion state baseline recorded for a sequential duplicate. Run `spoke-hooks baseline` first."
+      );
+
+      hasFailure = true;
+      continue;
+    }
 
     const actual =
-      await replayFixture(
+      await captureObservation(
         fixture,
-        config.endpoint,
-        config.timeoutMs,
-        replayOptions
+        config,
+        projectRoot
       );
-
-    const state =
-      config.assertion === undefined
-        ? undefined
-        : await runAssertionCommand(
-            config.assertion,
-            projectRoot,
-            fixture
-          );
 
     const comparison =
       compareReplayResult(
@@ -100,16 +132,8 @@ export async function runTest(): Promise<void> {
       config.assertion === undefined ||
       compareAssertionState(
         fixture.baseline.state,
-        state
+        actual.state
       );
-
-    const actualOutput =
-      config.assertion === undefined
-        ? actual
-        : {
-            ...actual,
-            state
-          };
 
     console.log("");
     console.log(
@@ -121,7 +145,7 @@ export async function runTest(): Promise<void> {
     );
     console.log(
       "Actual:",
-      actualOutput
+      actual
     );
 
     if (
@@ -139,6 +163,71 @@ export async function runTest(): Promise<void> {
       }
 
       hasFailure = true;
+    }
+
+    for (
+      let duplicateIndex = 0;
+      duplicateIndex <
+      sequentialDuplicates.length;
+      duplicateIndex += 1
+    ) {
+      const expectedDuplicate =
+        sequentialDuplicates[
+          duplicateIndex
+        ];
+
+      const actualDuplicate =
+        await captureObservation(
+          fixture,
+          config,
+          projectRoot
+        );
+
+      const duplicateComparison =
+        compareReplayResult(
+          expectedDuplicate,
+          actualDuplicate
+        );
+
+      const duplicateStateMatches =
+        config.assertion === undefined ||
+        compareAssertionState(
+          expectedDuplicate.state,
+          actualDuplicate.state
+        );
+
+      console.log("");
+      console.log(
+        `Event: ${fixture.event.type}`
+      );
+      console.log(
+        `Sequential duplicate #${duplicateIndex + 1}`
+      );
+      console.log(
+        "Expected:",
+        expectedDuplicate
+      );
+      console.log(
+        "Actual:",
+        actualDuplicate
+      );
+
+      if (
+        duplicateComparison.passed &&
+        duplicateStateMatches
+      ) {
+        console.log("PASS");
+      } else {
+        console.error("FAIL");
+
+        if (!duplicateStateMatches) {
+          console.error(
+            "Assertion state does not match the recorded baseline."
+          );
+        }
+
+        hasFailure = true;
+      }
     }
   }
 
